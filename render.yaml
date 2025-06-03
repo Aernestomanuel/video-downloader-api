@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: multi-platform-video-downloader
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: PORT
+        generateValue: true
+    plan: free
