@@ -10,15 +10,12 @@ from urllib.parse import urlparse, parse_qs
 import threading
 import time
 import logging
-from werkzeug.serving import WSGIRequestHandler
 
 # Configurar logging para produção
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler()
-    ]
+    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
@@ -30,9 +27,9 @@ app.config['ENV'] = 'production'
 app.config['DEBUG'] = False
 app.config['TESTING'] = False
 
-# Suprimir logs desnecessários
-log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
+# Suprimir logs desnecessários do Werkzeug
+werkzeug_logger = logging.getLogger('werkzeug')
+werkzeug_logger.setLevel(logging.ERROR)
 
 # Configurações globais
 TEMP_DIR = tempfile.mkdtemp()
@@ -676,12 +673,35 @@ def batch_info():
         logger.error(f"Erro em /batch-info: {str(e)}")
         return jsonify({'error': f'Erro interno: {str(e)}'}), 500
 
-# Handler customizado para suprimir logs de desenvolvimento
-class ProductionWSGIRequestHandler(WSGIRequestHandler):
-    def log_request(self, code='-', size='-'):
-        # Só logar erros
-        if str(code).startswith('4') or str(code).startswith('5'):
-            super().log_request(code, size)
-
 if __name__ == '__main__':
-    os.make
+    # Criar directório temporário
+    os.makedirs(TEMP_DIR, exist_ok=True)
+    
+    # Verificar dependências
+    try:
+        subprocess.run(['yt-dlp', '--version'], capture_output=True, check=True)
+        logger.info("✅ yt-dlp disponível")
+    except:
+        logger.warning("⚠️ AVISO: yt-dlp não encontrado")
+    
+    try:
+        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+        logger.info("✅ ffmpeg disponível")
+    except:
+        logger.warning("⚠️ AVISO: ffmpeg não encontrado")
+    
+    # Logs de inicialização
+    logger.info(f"🚀 API PRODUÇÃO iniciada com suporte a {len(SUPPORTED_PLATFORMS)} plataformas")
+    logger.info(f"🛡️ Filtro de conteúdo adulto: {len(ADULT_CONTENT_DOMAINS)} domínios bloqueados")
+    logger.info(f"🎵 Detecção automática de conteúdo apenas áudio: Activada")
+    
+    # Configuração da porta
+    port = int(os.environ.get('PORT', 5000))
+    
+    # EXECUTAR EM MODO PRODUÇÃO
+    app.run(
+        host='0.0.0.0',
+        port=port,
+        debug=False,
+        threaded=True
+    )
