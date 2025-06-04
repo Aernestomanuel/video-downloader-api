@@ -9,9 +9,30 @@ import re
 from urllib.parse import urlparse, parse_qs
 import threading
 import time
+import logging
+from werkzeug.serving import WSGIRequestHandler
+
+# Configurar logging para produção
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
+
+# Configuração para produção
+app.config['ENV'] = 'production'
+app.config['DEBUG'] = False
+app.config['TESTING'] = False
+
+# Suprimir logs desnecessários
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 # Configurações globais
 TEMP_DIR = tempfile.mkdtemp()
@@ -142,8 +163,9 @@ def cleanup_old_files():
                 file_age = current_time - os.path.getctime(file_path)
                 if file_age > MAX_FILE_AGE:
                     os.remove(file_path)
+                    logger.info(f"Arquivo temporário removido: {filename}")
     except Exception as e:
-        print(f"Erro na limpeza: {e}")
+        logger.error(f"Erro na limpeza: {e}")
 
 def extract_domain(url):
     """Extrai o domínio de um URL"""
@@ -328,6 +350,8 @@ def get_video_info(url):
         else:
             error_detail = f"Erro: {str(e)}"
         
+        logger.error(f"Erro ao obter informações do vídeo {url}: {error_detail}")
+        
         return {
             'available': False,
             'error': error_detail,
@@ -397,6 +421,8 @@ def download_video(url, format_type='mp4', quality='best', force_audio=False):
             title = info.get('title', 'video')
             platform = get_platform_name(url)
             
+            logger.info(f"Iniciando download: {title} ({platform}) - Formato: {format_type}")
+            
             if format_type == 'mp4' and force_audio:
                 raise Exception(f"[{platform}] Conteúdo apenas disponível em áudio")
             
@@ -409,23 +435,27 @@ def download_video(url, format_type='mp4', quality='best', force_audio=False):
                     for filename in os.listdir(TEMP_DIR):
                         if filename.startswith(url_hash) and filename.endswith(f'.{ext}'):
                             file_path = os.path.join(TEMP_DIR, filename)
+                            logger.info(f"Download concluído: {filename}")
                             return file_path, title, platform, ext
             else:
                 for filename in os.listdir(TEMP_DIR):
                     if filename.startswith(url_hash) and filename.endswith(f'.{expected_ext}'):
                         file_path = os.path.join(TEMP_DIR, filename)
+                        logger.info(f"Download concluído: {filename}")
                         return file_path, title, platform, expected_ext
             
             for filename in os.listdir(TEMP_DIR):
                 if filename.startswith(url_hash):
                     file_path = os.path.join(TEMP_DIR, filename)
                     actual_ext = filename.split('.')[-1] if '.' in filename else format_type
+                    logger.info(f"Download concluído: {filename}")
                     return file_path, title, platform, actual_ext
             
             raise FileNotFoundError("Ficheiro descarregado não encontrado")
             
     except Exception as e:
         platform = get_platform_name(url)
+        logger.error(f"Erro no download {url}: {str(e)}")
         
         error_msg = str(e).lower()
         if 'geo' in error_msg or 'region' in error_msg:
@@ -444,8 +474,9 @@ def download_video(url, format_type='mp4', quality='best', force_audio=False):
 @app.route('/', methods=['GET'])
 def home():
     return jsonify({
-        'status': 'API Multi-Platform Video Downloader Online',
+        'status': 'API Multi-Platform Video Downloader Online - PRODUÇÃO',
         'version': '2.1',
+        'environment': 'production',
         'supported_platforms': len(SUPPORTED_PLATFORMS),
         'adult_content_filter': 'Activado',
         'audio_detection': 'Automática',
@@ -522,6 +553,7 @@ def get_info():
         })
         
     except Exception as e:
+        logger.error(f"Erro em /info: {str(e)}")
         return jsonify({'error': f'Erro interno: {str(e)}'}), 500
 
 @app.route('/download', methods=['POST'])
@@ -576,6 +608,7 @@ def download():
             try:
                 if os.path.exists(file_path):
                     os.remove(file_path)
+                    logger.info(f"Arquivo temporário removido após download: {filename}")
             except:
                 pass
         
@@ -589,6 +622,7 @@ def download():
         )
         
     except Exception as e:
+        logger.error(f"Erro em /download: {str(e)}")
         return jsonify({'error': f'Erro no download: {str(e)}'}), 500
 
 @app.route('/batch-info', methods=['POST'])
@@ -639,26 +673,15 @@ def batch_info():
         })
         
     except Exception as e:
+        logger.error(f"Erro em /batch-info: {str(e)}")
         return jsonify({'error': f'Erro interno: {str(e)}'}), 500
 
+# Handler customizado para suprimir logs de desenvolvimento
+class ProductionWSGIRequestHandler(WSGIRequestHandler):
+    def log_request(self, code='-', size='-'):
+        # Só logar erros
+        if str(code).startswith('4') or str(code).startswith('5'):
+            super().log_request(code, size)
+
 if __name__ == '__main__':
-    os.makedirs(TEMP_DIR, exist_ok=True)
-    
-    try:
-        subprocess.run(['yt-dlp', '--version'], capture_output=True, check=True)
-        print("✅ yt-dlp disponível")
-    except:
-        print("⚠️ AVISO: yt-dlp não encontrado")
-    
-    try:
-        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
-        print("✅ ffmpeg disponível")
-    except:
-        print("⚠️ AVISO: ffmpeg não encontrado")
-    
-    print(f"🚀 API iniciada com suporte a {len(SUPPORTED_PLATFORMS)} plataformas")
-    print(f"🛡️ Filtro de conteúdo adulto: {len(ADULT_CONTENT_DOMAINS)} domínios bloqueados")
-    print(f"🎵 Detecção automática de conteúdo apenas áudio: Activada")
-    
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    os.make
