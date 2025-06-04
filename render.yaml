@@ -3,10 +3,8 @@ services:
     name: multi-platform-video-downloader
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 300 app:app
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: PORT
-        generateValue: true
+      - key: FLASK_ENV
+        value: production
     plan: free
